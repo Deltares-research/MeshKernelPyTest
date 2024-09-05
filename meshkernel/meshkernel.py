@@ -100,6 +100,8 @@ class MeshKernel:
 
         self._float_invalid_value = float(invalid_value)
 
+        self._set_undo_size(0)
+
     def __del__(self):
         self._deallocate_state()
 
@@ -167,6 +169,14 @@ class MeshKernel:
             projection,
             byref(self._meshkernelid),
         )
+
+    def _set_undo_size(self, undo_stack_size: int) -> None:
+        """Sets the maximum size of the undo stack.
+
+        Args:
+            undo_stack_size (int): The maximum size of the undo stack.
+        """
+        self._execute_function(self.lib.mkernel_set_undo_size, undo_stack_size)
 
     def _deallocate_state(self) -> None:
         """
@@ -444,6 +454,51 @@ class MeshKernel:
             self.lib.mkernel_mesh2d_get_face_polygons,
             self._meshkernelid,
             c_int(num_edges),
+            byref(c_face_polygons),
+        )
+
+        return face_polygons
+
+    def mesh2d_get_filtered_face_polygons(
+        self, property: Mesh2d.Property, min_value: float, max_value: float
+    ) -> GeometryList:
+        """Gets the polygons matching the metric value within the minimum and maximum value.
+
+        Args:
+
+            property (Mesh2d.Property): The property used to filter the locations
+            min_value(float): The minimum value of the metric.
+            max_value(float): The maximum value of the metric.
+
+        Returns:
+            GeometryList: The resulting face polygons
+        """
+        c_geometry_list_dimension = c_int()
+
+        self._execute_function(
+            self.lib.mkernel_mesh2d_get_filtered_face_polygons_dimension,
+            self._meshkernelid,
+            c_int(property),
+            c_double(min_value),
+            c_double(max_value),
+            byref(c_geometry_list_dimension),
+        )
+
+        n_coordinates = c_geometry_list_dimension.value
+        x_coordinates = np.empty(n_coordinates, dtype=np.double)
+        y_coordinates = np.empty(n_coordinates, dtype=np.double)
+
+        face_polygons = GeometryList(
+            x_coordinates=x_coordinates, y_coordinates=y_coordinates
+        )
+        c_face_polygons = CGeometryList.from_geometrylist(face_polygons)
+
+        self._execute_function(
+            self.lib.mkernel_mesh2d_get_filtered_face_polygons,
+            self._meshkernelid,
+            c_int(property),
+            c_double(min_value),
+            c_double(max_value),
             byref(c_face_polygons),
         )
 
@@ -1478,6 +1533,58 @@ class MeshKernel:
             c_double(search_radius),
         )
 
+    def mesh2d_casulli_derefinement(self) -> None:
+        """
+        De-refine the whole mesh using the Casulli algorithm
+        """
+        self._execute_function(
+            self.lib.mkernel_mesh2d_casulli_derefinement,
+            self._meshkernelid,
+        )
+
+    def mesh2d_casulli_derefinement_on_polygon(
+        self,
+        polygon: GeometryList,
+    ) -> None:
+        """
+        De-refine a mesh region using the Casulli algorithm
+
+        Args:
+            polygon (GeometryList): The input polygon.
+        """
+        c_polygon = CGeometryList.from_geometrylist(polygon)
+        self._execute_function(
+            self.lib.mkernel_mesh2d_casulli_derefinement_on_polygon,
+            self._meshkernelid,
+            byref(c_polygon),
+        )
+
+    def mesh2d_casulli_refinement(self) -> None:
+        """
+        Refine the whole mesh using the Casulli algorithm
+        """
+        self._execute_function(
+            self.lib.mkernel_mesh2d_casulli_refinement,
+            self._meshkernelid,
+        )
+
+    def mesh2d_casulli_refinement_on_polygon(
+        self,
+        polygon: GeometryList,
+    ) -> None:
+        """
+        Refine a mesh region using the Casulli algorithm
+
+        Args:
+            polygon (GeometryList): The input polygon.
+        """
+        c_polygon = CGeometryList.from_geometrylist(polygon)
+        self._execute_function(
+            self.lib.mkernel_mesh2d_casulli_refinement_on_polygon,
+            self._meshkernelid,
+            byref(c_polygon),
+        )
+
     def mesh2d_compute_orthogonalization(
         self,
         project_to_land_boundary_option: ProjectToLandBoundaryOption,
@@ -1540,6 +1647,45 @@ class MeshKernel:
         self.__map_to_valid_values(geometry_list_out, Mesh2dLocation.EDGES)
 
         return geometry_list_out
+
+    def mesh2d_get_property(self, property: Mesh2d.Property) -> GeometryList:
+        """Gets the polygons matching the metric value within the minimum and maximum value.
+
+        Args:
+
+            property (Mesh2d.Property): The property to retrieve
+
+        Returns:
+            GeometryList: The resulting geometry list containing the value of the properties
+        """
+
+        c_geometry_list_dimension = c_int()
+
+        self._execute_function(
+            self.lib.mkernel_mesh2d_get_property_dimension,
+            self._meshkernelid,
+            c_int(property),
+            byref(c_geometry_list_dimension),
+        )
+
+        n_coordinates = c_geometry_list_dimension.value
+        x_coordinates = np.empty(n_coordinates, dtype=np.double)
+        y_coordinates = np.empty(n_coordinates, dtype=np.double)
+        values = np.empty(n_coordinates, dtype=np.double)
+
+        property_list = GeometryList(
+            x_coordinates=x_coordinates, y_coordinates=y_coordinates, values=values
+        )
+        c_property_list = CGeometryList.from_geometrylist(property_list)
+
+        self._execute_function(
+            self.lib.mkernel_mesh2d_get_property,
+            self._meshkernelid,
+            c_int(property),
+            byref(c_property_list),
+        )
+
+        return property_list
 
     def mesh2d_get_smoothness(self):
         """Gets the smoothness, expressed as the ratio between the values of two neighboring faces areas.
